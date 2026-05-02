@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Traffic AI</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+</head>
+
+<body>
+
+<h2>🚦 Real-Time Traffic Risk Prediction</h2>
+
+<div id="map" style="height:400px;"></div>
+
+<form action="/predict" method="post">
+    Latitude: <input type="text" id="lat" name="lat"><br><br>
+    Longitude: <input type="text" id="lon" name="lon"><br><br>
+
+    <button type="submit">Predict</button>
+</form>
+
+<h3>{{ prediction_text }}</h3>
+
+<p>Temperature: {{ temp }}</p>
+<p>Rain: {{ rain }}</p>
+<p>Hour: {{ hour }}</p>
+
+<script>
+var map = L.map('map').setView([12.9716, 77.5946], 10);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+map.on('click', function(e) {
+    document.getElementById('lat').value = e.latlng.lat;
+    document.getElementById('lon').value = e.latlng.lng;
+});
+</script>
+
+</body>
+</html>
