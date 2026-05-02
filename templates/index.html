@@ -1,64 +1,196 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Traffic AI</title>
+<meta charset="utf-8"/>
+<title>🚦 Traffic AI </title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
+
+/* ===== GLOBAL ===== */
 body {
-    font-family: Arial;
-    background:#141e30;
-    color:white;
     margin:0;
+    font-family: 'Poppins', sans-serif;
+    background: radial-gradient(circle at top, #1f2a44, #0f172a);
+    color:white;
 }
-.container {
+
+/* ===== HEADER ===== */
+.header {
+    padding:15px 25px;
     display:flex;
+    justify-content:space-between;
+    align-items:center;
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(12px);
+    border-bottom:1px solid rgba(255,255,255,0.1);
 }
+
+.header h1 {
+    font-size:22px;
+    letter-spacing:1px;
+}
+
+/* ===== LAYOUT ===== */
+.layout {
+    display:flex;
+    height:calc(100vh - 70px);
+}
+
+/* ===== SIDEBAR ===== */
+.sidebar {
+    width:300px;
+    padding:20px;
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(15px);
+    border-right:1px solid rgba(255,255,255,0.1);
+}
+
+/* ===== MAIN ===== */
+.main {
+    flex:1;
+    display:flex;
+    flex-direction:column;
+}
+
+/* ===== MAP ===== */
 #map {
-    height:400px;
     flex:2;
+    border-radius:20px;
+    margin:15px;
+    overflow:hidden;
 }
+
+/* ===== PANEL ===== */
 .panel {
     flex:1;
+    display:flex;
+    gap:15px;
+    padding:15px;
+}
+
+/* ===== CARD ===== */
+.card {
+    flex:1;
+    background: rgba(255,255,255,0.07);
+    border-radius:20px;
     padding:20px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 0 20px rgba(0,0,0,0.3);
+    transition:0.3s;
 }
-input,button {
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+
+/* ===== INPUT ===== */
+input {
     width:100%;
-    padding:10px;
-    margin:5px;
+    padding:12px;
+    margin:8px 0;
+    border-radius:10px;
+    border:none;
+    outline:none;
+    background: rgba(255,255,255,0.1);
+    color:white;
 }
+
+/* ===== BUTTON ===== */
 button {
-    background:#00e5ff;
+    width:100%;
+    padding:12px;
+    border:none;
+    border-radius:10px;
+    background: linear-gradient(135deg,#00e5ff,#00ffcc);
+    font-weight:bold;
+    cursor:pointer;
+    transition:0.3s;
 }
+
+button:hover {
+    transform:scale(1.05);
+    box-shadow: 0 0 15px #00e5ff;
+}
+
+/* ===== STATUS ===== */
+#status {
+    font-size:13px;
+    margin-top:10px;
+    color:#00ffcc;
+}
+
+/* ===== RESULT ===== */
+#result {
+    font-size:20px;
+    font-weight:bold;
+    margin-top:10px;
+}
+
+/* ===== MOBILE ===== */
+@media(max-width:768px){
+    .layout {
+        flex-direction:column;
+    }
+    .sidebar {
+        width:100%;
+    }
+}
+
 </style>
 </head>
 
 <body>
 
-<div class="container">
+<!-- HEADER -->
+<div class="header">
+    <h1>🚦 Traffic AI Dashboard</h1>
+    <span id="status">Ready</span>
+</div>
 
-<div id="map"></div>
+<div class="layout">
 
-<div class="panel">
-    <h3>Route</h3>
-    <input id="start_place" placeholder="Start city">
-    <input id="end_place" placeholder="End city">
-    <button onclick="handleSubmit()">Predict</button>
+<!-- SIDEBAR -->
+<div class="sidebar">
+    <h3>📍 Route</h3>
 
-    <h3 id="result"></h3>
+    <input id="start_place" placeholder="Start location">
+    <input id="end_place" placeholder="Destination">
+
+    <button onclick="run()">🚀 Predict Route</button>
+
+    <h3 id="result">--</h3>
     <p id="details"></p>
+</div>
 
-    <canvas id="chart"></canvas>
+<!-- MAIN -->
+<div class="main">
+
+    <div id="map"></div>
+
+    <div class="panel">
+        <div class="card">
+            <h3>📊 Analytics</h3>
+            <canvas id="chart"></canvas>
+        </div>
+
+        <div class="card">
+            <h3>🌦 Weather</h3>
+            <p id="weatherBox">No data</p>
+        </div>
+    </div>
+
 </div>
 
 </div>
 
 <script>
 
-const API_URL = "/predict";  // IMPORTANT (no full URL needed)
+const API_URL = "/predict";
 
 // MAP
 var map = L.map('map').setView([12.97,77.59],10);
@@ -70,60 +202,49 @@ var routeLayer;
 async function geocode(place){
     let res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${place}`);
     let data = await res.json();
-
     if(!data.length) throw "Location not found";
-
-    return {
-        lat: parseFloat(data[0].lat),
-        lon: parseFloat(data[0].lon)
-    };
+    return {lat:parseFloat(data[0].lat), lon:parseFloat(data[0].lon)};
 }
 
 // ROUTE
-async function getRoute(start,end){
+async function getRoute(s,e){
     let res = await fetch(
-        `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`
+        `https://router.project-osrm.org/route/v1/driving/${s[1]},${s[0]};${e[1]},${e[0]}?overview=full&geometries=geojson`
     );
     let data = await res.json();
     return data.routes[0].geometry.coordinates;
 }
 
 // DRAW
-function drawRoute(coords,risk){
+function draw(coords,risk){
     if(routeLayer) map.removeLayer(routeLayer);
 
-    let latlngs = coords.map(c=>[c[1],c[0]]);
+    let pts = coords.map(c=>[c[1],c[0]]);
+    let color = risk.includes("High")?"#ff4d4d":
+                risk.includes("Medium")?"#ffaa00":"#00ff88";
 
-    let color = risk.includes("High") ? "red" :
-                risk.includes("Medium") ? "orange" : "green";
-
-    routeLayer = L.polyline(latlngs,{color,weight:5}).addTo(map);
+    routeLayer = L.polyline(pts,{color,weight:6}).addTo(map);
     map.fitBounds(routeLayer.getBounds());
 }
 
-// BACKEND
-async function getPrediction(start,end){
-    let res = await fetch(API_URL,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({
-            start_lat:start.lat,
-            start_lon:start.lon,
-            end_lat:end.lat,
-            end_lon:end.lon
-        })
-    });
-
-    return await res.json();
-}
-
 // MAIN
-async function handleSubmit(){
+async function run(){
     try{
-        let start = await geocode(start_place.value);
-        let end = await geocode(end_place.value);
+        status.innerText = "⏳ Processing...";
 
-        let data = await getPrediction(start,end);
+        let s = await geocode(start_place.value);
+        let e = await geocode(end_place.value);
+
+        let res = await fetch(API_URL,{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({
+                start_lat:s.lat,start_lon:s.lon,
+                end_lat:e.lat,end_lon:e.lon
+            })
+        });
+
+        let data = await res.json();
 
         result.innerText = data.prediction;
 
@@ -132,28 +253,30 @@ async function handleSubmit(){
 End: ${data.end_weather.temp}°C | Rain ${data.end_weather.rain}
 Hour: ${data.hour}`;
 
-        let route = await getRoute(
-            [start.lat,start.lon],
-            [end.lat,end.lon]
-        );
+        weatherBox.innerText =
+        `🌡 Start: ${data.start_weather.temp}°C
+🌧 End Rain: ${data.end_weather.rain}`;
 
-        drawRoute(route,data.prediction);
+        let route = await getRoute([s.lat,s.lon],[e.lat,e.lon]);
+        draw(route,data.prediction);
 
         updateChart(data);
 
-    } catch(e){
+        status.innerText = "✅ Done";
+
+    }catch(e){
+        status.innerText = "❌ Error";
         alert(e);
     }
 }
 
 // CHART
 let chart;
-
 function updateChart(data){
     if(chart) chart.destroy();
 
     chart = new Chart(document.getElementById("chart"),{
-        type:'bar',
+        type:'line',
         data:{
             labels:["S Temp","S Rain","E Temp","E Rain","Hour"],
             datasets:[{
@@ -163,7 +286,9 @@ function updateChart(data){
                     data.end_weather.temp,
                     data.end_weather.rain,
                     data.hour
-                ]
+                ],
+                borderColor:"#00e5ff",
+                tension:0.4
             }]
         }
     });
