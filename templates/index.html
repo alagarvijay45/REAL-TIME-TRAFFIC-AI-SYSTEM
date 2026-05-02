@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Traffic AI System</title>
+    <title>Traffic AI Pro</title>
 
     <!-- Leaflet -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
@@ -41,16 +41,20 @@
 
 <body>
 
-<h1>🚦 Traffic AI</h1>
+<h1>🚦 Traffic AI System (Advanced)</h1>
 
 <div id="map"></div>
 
 <button onclick="getLocation()">📍 Use My Location</button>
 
 <form action="/predict" method="post" onsubmit="saveCoords()">
-    <input id="lat" name="lat" placeholder="Latitude" required>
-    <input id="lon" name="lon" placeholder="Longitude" required><br>
-    <button type="submit">Predict</button>
+    <input id="start_lat" name="lat" placeholder="Start Latitude" required>
+    <input id="start_lon" name="lon" placeholder="Start Longitude" required><br>
+
+    <input id="end_lat" placeholder="Destination Latitude" required>
+    <input id="end_lon" placeholder="Destination Longitude" required><br>
+
+    <button type="submit">Predict & Route</button>
 </form>
 
 {% if prediction_text %}
@@ -70,16 +74,14 @@ var map = L.map('map').setView([12.97,77.59],10);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// HEATMAP
+// LAYERS
 var heat = L.heatLayer([], {radius:25}).addTo(map);
-
-// TRAFFIC LAYER
 var trafficLayer = L.layerGroup().addTo(map);
 
 // CLICK MAP
 map.on('click', function(e){
-    document.getElementById("lat").value = e.latlng.lat;
-    document.getElementById("lon").value = e.latlng.lng;
+    document.getElementById("start_lat").value = e.latlng.lat;
+    document.getElementById("start_lon").value = e.latlng.lng;
 });
 
 // GPS
@@ -88,8 +90,8 @@ function getLocation(){
         let lat = pos.coords.latitude;
         let lon = pos.coords.longitude;
 
-        document.getElementById("lat").value = lat;
-        document.getElementById("lon").value = lon;
+        document.getElementById("start_lat").value = lat;
+        document.getElementById("start_lon").value = lon;
 
         map.setView([lat,lon],13);
     });
@@ -97,41 +99,64 @@ function getLocation(){
 
 // SAVE COORDS
 function saveCoords(){
-    localStorage.setItem("lat", document.getElementById("lat").value);
-    localStorage.setItem("lon", document.getElementById("lon").value);
+    localStorage.setItem("start_lat", document.getElementById("start_lat").value);
+    localStorage.setItem("start_lon", document.getElementById("start_lon").value);
+    localStorage.setItem("end_lat", document.getElementById("end_lat").value);
+    localStorage.setItem("end_lon", document.getElementById("end_lon").value);
 }
 
-// TRAFFIC VISUALIZATION
-function showTraffic(lat, lon, risk) {
+// DRAW ROUTE
+function drawRoute(start, end, risk) {
     trafficLayer.clearLayers();
 
     let color = "green";
-
     if (risk.includes("High")) color = "red";
     else if (risk.includes("Medium")) color = "orange";
 
-    let line = L.polyline([
-        [lat, lon],
-        [lat + 0.01, lon + 0.01]
-    ], {color: color, weight: 6});
+    let route = L.polyline([start, end], {
+        color: color,
+        weight: 6
+    }).addTo(trafficLayer);
 
-    line.addTo(trafficLayer);
+    animateVehicle(route);
+}
+
+// VEHICLE ANIMATION 🚗
+function animateVehicle(route) {
+    let latlngs = route.getLatLngs();
+    let marker = L.marker(latlngs[0]).addTo(map);
+
+    let i = 0;
+
+    function move() {
+        if (i < latlngs.length) {
+            marker.setLatLng(latlngs[i]);
+            i++;
+            setTimeout(move, 300);
+        }
+    }
+
+    move();
 }
 
 // LOAD
 window.onload = function(){
-    let lat = localStorage.getItem("lat");
-    let lon = localStorage.getItem("lon");
-
-    if(lat && lon){
-        heat.addLatLng([lat, lon, 1]);
-    }
+    let s_lat = localStorage.getItem("start_lat");
+    let s_lon = localStorage.getItem("start_lon");
+    let e_lat = localStorage.getItem("end_lat");
+    let e_lon = localStorage.getItem("end_lon");
 
     {% if prediction_text %}
-    if(lat && lon){
-        showTraffic(parseFloat(lat), parseFloat(lon), "{{ prediction_text }}");
+    if(s_lat && s_lon && e_lat && e_lon){
+        let start = [parseFloat(s_lat), parseFloat(s_lon)];
+        let end = [parseFloat(e_lat), parseFloat(e_lon)];
+
+        drawRoute(start, end, "{{ prediction_text }}");
+
+        heat.addLatLng([s_lat, s_lon, 1]);
     }
 
+    // CHART
     var ctx = document.getElementById("chart").getContext("2d");
     new Chart(ctx,{
         type:'bar',
