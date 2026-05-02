@@ -1,210 +1,136 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>🚦 Traffic AI</title>
+<title>Traffic AI</title>
 
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-    <style>
-        body {
-            margin:0;
-            font-family: 'Segoe UI';
-            background: linear-gradient(135deg,#141e30,#243b55);
-            color:white;
-        }
-
-        .header {
-            padding:15px;
-            text-align:center;
-        }
-
-        .container {
-            display:grid;
-            grid-template-columns: 2fr 1fr;
-            gap:15px;
-            padding:15px;
-        }
-
-        .card {
-            background: rgba(255,255,255,0.1);
-            padding:15px;
-            border-radius:15px;
-        }
-
-        #map {
-            height:400px;
-            border-radius:15px;
-        }
-
-        input, button {
-            width:95%;
-            padding:10px;
-            margin:6px;
-            border-radius:8px;
-            border:none;
-        }
-
-        button {
-            background:#00e5ff;
-            cursor:pointer;
-            font-weight:bold;
-        }
-
-        #status {
-            font-size:14px;
-            color:#ffd700;
-        }
-
-        @media(max-width:768px){
-            .container {
-                grid-template-columns: 1fr;
-            }
-        }
-    </style>
+<style>
+body {
+    font-family: Arial;
+    background:#141e30;
+    color:white;
+    margin:0;
+}
+.container {
+    display:flex;
+}
+#map {
+    height:400px;
+    flex:2;
+}
+.panel {
+    flex:1;
+    padding:20px;
+}
+input,button {
+    width:100%;
+    padding:10px;
+    margin:5px;
+}
+button {
+    background:#00e5ff;
+}
+</style>
 </head>
 
 <body>
 
-<div class="header">
-    <h1>🚦 Traffic AI System</h1>
-    <p id="status">Ready</p>
-</div>
-
 <div class="container">
 
-    <!-- LEFT -->
-    <div>
-        <div class="card">
-            <h3>🗺 Map</h3>
-            <div id="map"></div>
-        </div>
+<div id="map"></div>
 
-        <div class="card">
-            <h3>📊 Analytics</h3>
-            <canvas id="chartCanvas"></canvas>
-        </div>
-    </div>
+<div class="panel">
+    <h3>Route</h3>
+    <input id="start_place" placeholder="Start city">
+    <input id="end_place" placeholder="End city">
+    <button onclick="handleSubmit()">Predict</button>
 
-    <!-- RIGHT -->
-    <div>
-        <div class="card">
-            <h3>📍 Route Input</h3>
-            <input id="start_place" placeholder="Start (e.g Chennai)">
-            <input id="end_place" placeholder="Destination (e.g Bangalore)">
-            <button onclick="handleSubmit()">🚀 Predict</button>
-        </div>
+    <h3 id="result"></h3>
+    <p id="details"></p>
 
-        <div class="card">
-            <h3>🚦 Result</h3>
-            <h2 id="result">--</h2>
-            <p id="details"></p>
-        </div>
-    </div>
+    <canvas id="chart"></canvas>
+</div>
 
 </div>
 
 <script>
 
-// 🔥 CHANGE THIS AFTER DEPLOY
-const API_URL = "https://your-backend.onrender.com/predict";
+const API_URL = "/predict";  // IMPORTANT (no full URL needed)
 
-// MAP INIT
+// MAP
 var map = L.map('map').setView([12.97,77.59],10);
-
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png')
-.addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 var routeLayer;
 
-// ================= GEOCODE =================
+// GEOCODE
 async function geocode(place){
-    try {
-        let url = `https://nominatim.openstreetmap.org/search?format=json&q=${place}`;
-        let res = await fetch(url);
-        let data = await res.json();
-
-        if(data.length === 0) throw "Location not found";
-
-        return {
-            lat: parseFloat(data[0].lat),
-            lon: parseFloat(data[0].lon)
-        };
-
-    } catch (err) {
-        alert("❌ " + err);
-        return null;
-    }
-}
-
-// ================= ROUTE =================
-async function getRoute(start,end){
-    let url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
-
-    let res = await fetch(url);
+    let res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${place}`);
     let data = await res.json();
 
+    if(!data.length) throw "Location not found";
+
+    return {
+        lat: parseFloat(data[0].lat),
+        lon: parseFloat(data[0].lon)
+    };
+}
+
+// ROUTE
+async function getRoute(start,end){
+    let res = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`
+    );
+    let data = await res.json();
     return data.routes[0].geometry.coordinates;
 }
 
-// ================= DRAW =================
+// DRAW
 function drawRoute(coords,risk){
-
     if(routeLayer) map.removeLayer(routeLayer);
 
     let latlngs = coords.map(c=>[c[1],c[0]]);
 
-    let color = "green";
-    if(risk.includes("High")) color="red";
-    else if(risk.includes("Medium")) color="orange";
+    let color = risk.includes("High") ? "red" :
+                risk.includes("Medium") ? "orange" : "green";
 
-    routeLayer = L.polyline(latlngs,{
-        color:color,
-        weight:6
-    }).addTo(map);
-
+    routeLayer = L.polyline(latlngs,{color,weight:5}).addTo(map);
     map.fitBounds(routeLayer.getBounds());
 }
 
-// ================= BACKEND =================
+// BACKEND
 async function getPrediction(start,end){
-
     let res = await fetch(API_URL,{
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({
-            start_lat: start.lat,
-            start_lon: start.lon,
-            end_lat: end.lat,
-            end_lon: end.lon
+            start_lat:start.lat,
+            start_lon:start.lon,
+            end_lat:end.lat,
+            end_lon:end.lon
         })
     });
-
-    if(!res.ok) throw "Server error";
 
     return await res.json();
 }
 
-// ================= MAIN =================
+// MAIN
 async function handleSubmit(){
-
-    try {
-        status.innerText = "⏳ Loading...";
-
+    try{
         let start = await geocode(start_place.value);
         let end = await geocode(end_place.value);
-
-        if(!start || !end) return;
 
         let data = await getPrediction(start,end);
 
         result.innerText = data.prediction;
 
         details.innerText =
-`📍 Start → Temp: ${data.start_weather.temp}°C | Rain: ${data.start_weather.rain}
-📍 End → Temp: ${data.end_weather.temp}°C | Rain: ${data.end_weather.rain}
-⏰ Hour: ${data.hour}`;
+        `Start: ${data.start_weather.temp}°C | Rain ${data.start_weather.rain}
+End: ${data.end_weather.temp}°C | Rain ${data.end_weather.rain}
+Hour: ${data.hour}`;
 
         let route = await getRoute(
             [start.lat,start.lon],
@@ -213,46 +139,34 @@ async function handleSubmit(){
 
         drawRoute(route,data.prediction);
 
-        updateChart(
-            data.start_weather.temp,
-            data.start_weather.rain,
-            data.end_weather.temp,
-            data.end_weather.rain,
-            data.hour
-        );
+        updateChart(data);
 
-        status.innerText = "✅ Done";
-
-    } catch (err) {
-        console.error(err);
-        status.innerText = "❌ Failed";
-        alert("Error: " + err);
+    } catch(e){
+        alert(e);
     }
 }
 
-// ================= CHART =================
+// CHART
 let chart;
 
-function updateChart(s_temp,s_rain,e_temp,e_rain,hour){
-
+function updateChart(data){
     if(chart) chart.destroy();
 
-    chart = new Chart(
-        document.getElementById("chartCanvas").getContext("2d"),
-        {
-            type:'bar',
-            data:{
-                labels:[
-                    'Start Temp','Start Rain',
-                    'End Temp','End Rain','Hour'
-                ],
-                datasets:[{
-                    label:'Live Data',
-                    data:[s_temp,s_rain,e_temp,e_rain,hour]
-                }]
-            }
+    chart = new Chart(document.getElementById("chart"),{
+        type:'bar',
+        data:{
+            labels:["S Temp","S Rain","E Temp","E Rain","Hour"],
+            datasets:[{
+                data:[
+                    data.start_weather.temp,
+                    data.start_weather.rain,
+                    data.end_weather.temp,
+                    data.end_weather.rain,
+                    data.hour
+                ]
+            }]
         }
-    );
+    });
 }
 
 </script>
