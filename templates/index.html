@@ -1,13 +1,17 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Traffic AI Pro</title>
+    <title>🚦 Real Time Traffic system </title>
 
     <!-- Leaflet -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-    <!-- Heatmap -->
+    <!-- Routing -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css"/>
+    <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
+
+    <!-- Heat -->
     <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
 
     <!-- Chart -->
@@ -15,161 +19,192 @@
 
     <style>
         body {
-            font-family: Arial;
-            background: #1e3c72;
-            color: white;
-            text-align: center;
+            margin:0;
+            font-family: 'Segoe UI';
+            background: linear-gradient(135deg,#141e30,#243b55);
+            color:white;
+            text-align:center;
         }
 
         #map {
             height: 400px;
-            margin: 20px;
+            border-radius:15px;
+            margin:15px;
+        }
+
+        .glass {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            padding:15px;
+            border-radius:15px;
+            margin:10px;
         }
 
         input, button {
-            padding: 10px;
-            margin: 5px;
+            padding:10px;
+            border:none;
+            border-radius:8px;
+            margin:5px;
         }
 
-        .card {
-            background: rgba(255,255,255,0.2);
-            padding: 10px;
-            margin-top: 20px;
+        button {
+            background:#00e5ff;
+            font-weight:bold;
+            cursor:pointer;
+        }
+
+        #clock {
+            font-size:20px;
+            color:#00ffcc;
         }
     </style>
 </head>
 
 <body>
 
-<h1>🚦 Traffic AI System (Advanced)</h1>
+<h1>🚦 Traffic AI PRO MAX</h1>
+
+<div id="clock"></div>
 
 <div id="map"></div>
 
+<div class="glass">
 <button onclick="getLocation()">📍 Use My Location</button>
 
-<form action="/predict" method="post" onsubmit="saveCoords()">
-    <input id="start_lat" name="lat" placeholder="Start Latitude" required>
-    <input id="start_lon" name="lon" placeholder="Start Longitude" required><br>
+<form onsubmit="handleSubmit(event)">
+<input id="start_lat" placeholder="Start Latitude" required>
+<input id="start_lon" placeholder="Start Longitude" required><br>
 
-    <input id="end_lat" placeholder="Destination Latitude" required>
-    <input id="end_lon" placeholder="Destination Longitude" required><br>
+<input id="end_lat" placeholder="Destination Latitude" required>
+<input id="end_lon" placeholder="Destination Longitude" required><br>
 
-    <button type="submit">Predict & Route</button>
+<button type="submit">🚀 Predict & Route</button>
 </form>
+</div>
 
-{% if prediction_text %}
-<div class="card">
-    <h2>{{ prediction_text }}</h2>
-    <p>Temp: {{ temp }}</p>
-    <p>Rain: {{ rain }}</p>
-    <p>Hour: {{ hour }}</p>
+<div class="glass">
+<h2 id="result">Prediction: --</h2>
+<p id="details"></p>
 </div>
 
 <canvas id="chart"></canvas>
-{% endif %}
 
 <script>
-// MAP
+
+// ================= MAP =================
 var map = L.map('map').setView([12.97,77.59],10);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// LAYERS
 var heat = L.heatLayer([], {radius:25}).addTo(map);
-var trafficLayer = L.layerGroup().addTo(map);
+var routingControl;
 
-// CLICK MAP
-map.on('click', function(e){
-    document.getElementById("start_lat").value = e.latlng.lat;
-    document.getElementById("start_lon").value = e.latlng.lng;
-});
+// ================= CLOCK =================
+function updateClock(){
+    const now = new Date();
+    document.getElementById("clock").innerText =
+        now.toLocaleTimeString();
+}
+setInterval(updateClock,1000);
+updateClock();
 
-// GPS
+// ================= GPS =================
 function getLocation(){
     navigator.geolocation.getCurrentPosition(function(pos){
         let lat = pos.coords.latitude;
         let lon = pos.coords.longitude;
 
-        document.getElementById("start_lat").value = lat;
-        document.getElementById("start_lon").value = lon;
+        start_lat.value = lat;
+        start_lon.value = lon;
 
         map.setView([lat,lon],13);
     });
 }
 
-// SAVE COORDS
-function saveCoords(){
-    localStorage.setItem("start_lat", document.getElementById("start_lat").value);
-    localStorage.setItem("start_lon", document.getElementById("start_lon").value);
-    localStorage.setItem("end_lat", document.getElementById("end_lat").value);
-    localStorage.setItem("end_lon", document.getElementById("end_lon").value);
-}
+// ================= ROUTING =================
+function drawRoute(start, end, risk){
 
-// DRAW ROUTE
-function drawRoute(start, end, risk) {
-    trafficLayer.clearLayers();
+    if(routingControl){
+        map.removeControl(routingControl);
+    }
 
     let color = "green";
-    if (risk.includes("High")) color = "red";
-    else if (risk.includes("Medium")) color = "orange";
+    if(risk.includes("High")) color="red";
+    else if(risk.includes("Medium")) color="orange";
 
-    let route = L.polyline([start, end], {
-        color: color,
-        weight: 6
-    }).addTo(trafficLayer);
-
-    animateVehicle(route);
-}
-
-// VEHICLE ANIMATION 🚗
-function animateVehicle(route) {
-    let latlngs = route.getLatLngs();
-    let marker = L.marker(latlngs[0]).addTo(map);
-
-    let i = 0;
-
-    function move() {
-        if (i < latlngs.length) {
-            marker.setLatLng(latlngs[i]);
-            i++;
-            setTimeout(move, 300);
+    routingControl = L.Routing.control({
+        waypoints:[
+            L.latLng(start[0],start[1]),
+            L.latLng(end[0],end[1])
+        ],
+        routeWhileDragging:false,
+        lineOptions:{
+            styles:[{color:color, weight:6}]
         }
-    }
+    }).addTo(map);
 
-    move();
 }
 
-// LOAD
-window.onload = function(){
-    let s_lat = localStorage.getItem("start_lat");
-    let s_lon = localStorage.getItem("start_lon");
-    let e_lat = localStorage.getItem("end_lat");
-    let e_lon = localStorage.getItem("end_lon");
+// ================= FAKE AI PREDICTION =================
+function getPrediction(temp, rain, hour){
+    if(rain > 5 || hour >= 18) return "🔴 High Risk Area";
+    if(temp > 30) return "🟡 Medium Risk Area";
+    return "🟢 Low Risk Area";
+}
 
-    {% if prediction_text %}
-    if(s_lat && s_lon && e_lat && e_lon){
-        let start = [parseFloat(s_lat), parseFloat(s_lon)];
-        let end = [parseFloat(e_lat), parseFloat(e_lon)];
+// ================= SUBMIT =================
+function handleSubmit(e){
+    e.preventDefault();
 
-        drawRoute(start, end, "{{ prediction_text }}");
+    let s_lat = parseFloat(start_lat.value);
+    let s_lon = parseFloat(start_lon.value);
+    let e_lat = parseFloat(end_lat.value);
+    let e_lon = parseFloat(end_lon.value);
 
-        heat.addLatLng([s_lat, s_lon, 1]);
-    }
+    let hour = new Date().getHours();
+    let temp = Math.floor(Math.random()*10)+25;
+    let rain = Math.floor(Math.random()*10);
 
-    // CHART
+    let result = getPrediction(temp,rain,hour);
+
+    document.getElementById("result").innerText = result;
+    document.getElementById("details").innerText =
+        `Temp: ${temp}°C | Rain: ${rain}mm | Hour: ${hour}`;
+
+    drawRoute([s_lat,s_lon],[e_lat,e_lon],result);
+
+    heat.addLatLng([s_lat,s_lon,Math.random()]);
+
+    updateChart(temp,rain,hour);
+}
+
+// ================= CHART =================
+var chart;
+
+function updateChart(temp,rain,hour){
+    if(chart) chart.destroy();
+
     var ctx = document.getElementById("chart").getContext("2d");
-    new Chart(ctx,{
-        type:'bar',
+
+    chart = new Chart(ctx,{
+        type:'line',
         data:{
             labels:['Temp','Rain','Hour'],
             datasets:[{
-                label:'Live Data',
-                data:[{{ temp }},{{ rain }},{{ hour }}]
+                label:'Live Metrics',
+                data:[temp,rain,hour]
             }]
         }
     });
-    {% endif %}
 }
+
+// ================= AUTO LIVE UPDATE =================
+setInterval(()=>{
+    let hour = new Date().getHours();
+    document.getElementById("clock").innerText =
+        "Live Time: " + new Date().toLocaleTimeString();
+},1000);
+
 </script>
 
 </body>
