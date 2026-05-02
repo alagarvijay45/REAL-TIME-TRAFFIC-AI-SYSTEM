@@ -44,6 +44,17 @@ def get_weather(lat, lon):
 @app.route("/")
 def home():
     return send_from_directory(".", "index.html")
+    import os
+from flask import send_file
+
+@app.route("/")
+def home():
+    file_path = os.path.join(os.getcwd(), "index.html")
+
+    if os.path.exists(file_path):
+        return send_file(file_path)
+    else:
+        return "❌ index.html not found in root folder"
 
 # ---------- PREDICT ----------
 @app.route("/predict", methods=["POST"])
