@@ -1,54 +1,91 @@
 from flask import Flask, request, jsonify
-import requests, datetime, pickle
+import requests
+import datetime
+import pickle
+import os
 
 app = Flask(__name__)
 
-model = pickle.load(open("model.pkl", "rb"))
+# ================= LOAD MODEL =================
+model = None
+try:
+    model_path = os.path.join(os.path.dirname(__file__), "model.pkl")
+    model = pickle.load(open(model_path, "rb"))
+    print("✅ Model loaded successfully")
+except Exception as e:
+    print("⚠️ Model not found or failed to load:", e)
 
-API_KEY = "YOUR_OPENWEATHER_API_KEY"
+# ================= API KEY =================
+API_KEY = os.getenv("API_KEY")  # set this in Render
 
-# 🌦 GET WEATHER FUNCTION
+# ================= WEATHER FUNCTION =================
 def get_weather(lat, lon):
-    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={API_KEY}&units=metric"
-    res = requests.get(url).json()
+    try:
+        url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={API_KEY}&units=metric"
+        res = requests.get(url, timeout=5).json()
 
-    temp = res["main"]["temp"]
-    rain = res.get("rain", {}).get("1h", 0)
+        temp = res["main"]["temp"]
+        rain = res.get("rain", {}).get("1h", 0)
 
-    return temp, rain
+        return temp, rain
 
-# 🚦 PREDICT API
+    except Exception as e:
+        print("Weather fetch failed:", e)
+        return 25, 0  # fallback safe values
+
+# ================= HEALTH CHECK =================
+@app.route("/")
+def home():
+    return "🚦 Traffic AI Backend Running"
+
+# ================= PREDICT =================
 @app.route("/predict", methods=["POST"])
 def predict():
-    data = request.json
+    try:
+        data = request.json
 
-    s_lat = data["start_lat"]
-    s_lon = data["start_lon"]
-    e_lat = data["end_lat"]
-    e_lon = data["end_lon"]
+        s_lat = data["start_lat"]
+        s_lon = data["start_lon"]
+        e_lat = data["end_lat"]
+        e_lon = data["end_lon"]
 
-    # 🌦 BOTH LOCATIONS WEATHER
-    s_temp, s_rain = get_weather(s_lat, s_lon)
-    e_temp, e_rain = get_weather(e_lat, e_lon)
+        # 🌦 Weather for BOTH locations
+        s_temp, s_rain = get_weather(s_lat, s_lon)
+        e_temp, e_rain = get_weather(e_lat, e_lon)
 
-    hour = datetime.datetime.now().hour
+        hour = datetime.datetime.now().hour
 
-    # 🤖 MODEL INPUT (UPDATED)
-    features = [[s_temp, s_rain, e_temp, e_rain, hour]]
-    prediction = model.predict(features)[0]
+        # 🤖 ML Prediction (if model exists)
+        if model:
+            features = [[s_temp, s_rain, e_temp, e_rain, hour]]
+            prediction = model.predict(features)[0]
+        else:
+            # fallback logic (so app doesn't crash)
+            if s_rain > 5 or e_rain > 5 or hour >= 18:
+                prediction = "🔴 High Risk Area"
+            elif s_temp > 30 or e_temp > 30:
+                prediction = "🟡 Medium Risk Area"
+            else:
+                prediction = "🟢 Low Risk Area"
 
-    return jsonify({
-        "prediction": str(prediction),
-        "start_weather": {
-            "temp": s_temp,
-            "rain": s_rain
-        },
-        "end_weather": {
-            "temp": e_temp,
-            "rain": e_rain
-        },
-        "hour": hour
-    })
+        return jsonify({
+            "prediction": str(prediction),
+            "start_weather": {
+                "temp": s_temp,
+                "rain": s_rain
+            },
+            "end_weather": {
+                "temp": e_temp,
+                "rain": e_rain
+            },
+            "hour": hour
+        })
 
+    except Exception as e:
+        print("Prediction error:", e)
+        return jsonify({"error": str(e)}), 500
+
+
+# ================= RUN =================
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000)
