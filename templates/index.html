@@ -1,82 +1,36 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>🚦 Traffic AI </title>
+    <title>🚦 Traffic AI</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
-        :root {
-            --bg: #141e30;
-            --card: rgba(255,255,255,0.08);
-            --text: white;
-        }
-
-        body.light {
-            --bg: #f4f4f4;
-            --card: white;
-            --text: black;
-        }
-
         body {
             margin:0;
             font-family: 'Segoe UI';
-            background: var(--bg);
-            color: var(--text);
+            background: linear-gradient(135deg,#141e30,#243b55);
+            color:white;
         }
 
         .header {
-            display:flex;
-            justify-content:space-between;
             padding:15px;
-            background: rgba(0,0,0,0.3);
+            text-align:center;
         }
 
-        .toggle {
-            cursor:pointer;
-            padding:8px 12px;
-            background:#00e5ff;
-            border-radius:8px;
-        }
-
-        .layout {
+        .container {
             display:grid;
-            grid-template-columns: 250px 1fr;
-        }
-
-        .sidebar {
-            padding:15px;
-            background: rgba(0,0,0,0.2);
-        }
-
-        .content {
+            grid-template-columns: 2fr 1fr;
+            gap:15px;
             padding:15px;
         }
 
         .card {
-            background: var(--card);
+            background: rgba(255,255,255,0.1);
             padding:15px;
-            margin-bottom:15px;
             border-radius:15px;
-        }
-
-        input {
-            width:100%;
-            padding:10px;
-            margin:5px 0;
-            border-radius:8px;
-            border:none;
-        }
-
-        button {
-            width:100%;
-            padding:10px;
-            background:#00e5ff;
-            border:none;
-            border-radius:8px;
-            cursor:pointer;
         }
 
         #map {
@@ -84,49 +38,31 @@
             border-radius:15px;
         }
 
-        /* MOBILE */
-        @media(max-width:768px){
-            .layout {
-                grid-template-columns: 1fr;
-            }
+        input, button {
+            width:90%;
+            padding:10px;
+            margin:5px;
+            border-radius:8px;
+            border:none;
+        }
+
+        button {
+            background:#00e5ff;
+            cursor:pointer;
         }
     </style>
 </head>
 
 <body>
 
-<!-- HEADER -->
 <div class="header">
-    <h2>🚦 Traffic AI</h2>
-    <div>
-        <span id="clock"></span>
-        <span class="toggle" onclick="toggleTheme()">🌙</span>
-    </div>
+    <h1>🚦 Traffic AI System</h1>
 </div>
 
-<div class="layout">
+<div class="container">
 
-    <!-- SIDEBAR -->
-    <div class="sidebar">
-
-        <div class="card">
-            <h3>📍 Route</h3>
-            <input id="start_place" placeholder="Start location">
-            <input id="end_place" placeholder="Destination">
-            <button onclick="handleSubmit()">🚀 Go</button>
-        </div>
-
-        <div class="card">
-            <h3>🚦 Result</h3>
-            <h2 id="result">--</h2>
-            <p id="details"></p>
-        </div>
-
-    </div>
-
-    <!-- MAIN -->
-    <div class="content">
-
+    <!-- LEFT -->
+    <div>
         <div class="card">
             <h3>🗺 Map</h3>
             <div id="map"></div>
@@ -136,7 +72,22 @@
             <h3>📊 Analytics</h3>
             <canvas id="chart"></canvas>
         </div>
+    </div>
 
+    <!-- RIGHT -->
+    <div>
+        <div class="card">
+            <h3>📍 Route Input</h3>
+            <input id="start_place" placeholder="Start (e.g Chennai)">
+            <input id="end_place" placeholder="Destination (e.g Bangalore)">
+            <button onclick="handleSubmit()">Predict</button>
+        </div>
+
+        <div class="card">
+            <h3>🚦 Result</h3>
+            <h2 id="result">--</h2>
+            <p id="details"></p>
+        </div>
     </div>
 
 </div>
@@ -145,30 +96,11 @@
 
 const API_URL = "http://127.0.0.1:5000/predict";
 
-// CLOCK
-setInterval(()=>{
-    clock.innerText = new Date().toLocaleTimeString();
-},1000);
-
-// THEME
-function toggleTheme(){
-    document.body.classList.toggle("light");
-}
-
 // MAP
 var map = L.map('map').setView([12.97,77.59],10);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
 var routeLayer;
-
-// CLICK MAP → AUTO FILL
-map.on('click', async function(e){
-    let lat = e.latlng.lat;
-    let lon = e.latlng.lng;
-
-    let place = await reverseGeocode(lat, lon);
-    start_place.value = place;
-});
 
 // GEOCODE
 async function geocode(place){
@@ -180,15 +112,6 @@ async function geocode(place){
         lat: parseFloat(data[0].lat),
         lon: parseFloat(data[0].lon)
     };
-}
-
-// REVERSE GEOCODE
-async function reverseGeocode(lat, lon){
-    let url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
-    let res = await fetch(url);
-    let data = await res.json();
-
-    return data.display_name.split(",")[0];
 }
 
 // ROUTE
@@ -203,10 +126,7 @@ async function getRoute(start,end){
 
 // DRAW
 function drawRoute(coords,risk){
-
-    if(routeLayer){
-        map.removeLayer(routeLayer);
-    }
+    if(routeLayer) map.removeLayer(routeLayer);
 
     let latlngs = coords.map(c=>[c[1],c[0]]);
 
@@ -214,16 +134,20 @@ function drawRoute(coords,risk){
                 risk.includes("Medium") ? "orange" : "green";
 
     routeLayer = L.polyline(latlngs,{color,weight:6}).addTo(map);
-
     map.fitBounds(routeLayer.getBounds());
 }
 
 // BACKEND
-async function getPrediction(lat,lon){
+async function getPrediction(start,end){
     let res = await fetch(API_URL,{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({lat,lon})
+        body: JSON.stringify({
+            start_lat: start.lat,
+            start_lon: start.lon,
+            end_lat: end.lat,
+            end_lon: end.lon
+        })
     });
 
     return await res.json();
@@ -235,11 +159,14 @@ async function handleSubmit(){
     let start = await geocode(start_place.value);
     let end = await geocode(end_place.value);
 
-    let data = await getPrediction(start.lat,start.lon);
+    let data = await getPrediction(start,end);
 
     result.innerText = data.prediction;
+
     details.innerText =
-        `Temp:${data.temp}°C | Rain:${data.rain} | Hour:${data.hour}`;
+        `📍 Start → Temp: ${data.start_weather.temp}°C | Rain: ${data.start_weather.rain}
+📍 End → Temp: ${data.end_weather.temp}°C | Rain: ${data.end_weather.rain}
+⏰ Hour: ${data.hour}`;
 
     let route = await getRoute(
         [start.lat,start.lon],
@@ -248,20 +175,31 @@ async function handleSubmit(){
 
     drawRoute(route,data.prediction);
 
-    updateChart(data.temp,data.rain,data.hour);
+    updateChart(
+        data.start_weather.temp,
+        data.start_weather.rain,
+        data.end_weather.temp,
+        data.end_weather.rain,
+        data.hour
+    );
 }
 
 // CHART
 let chart;
 
-function updateChart(t,r,h){
+function updateChart(s_temp,s_rain,e_temp,e_rain,hour){
     if(chart) chart.destroy();
 
     chart = new Chart(chartCanvas.getContext("2d"),{
-        type:'line',
+        type:'bar',
         data:{
-            labels:['Temp','Rain','Hour'],
-            datasets:[{data:[t,r,h]}]
+            labels:[
+                'Start Temp','Start Rain',
+                'End Temp','End Rain','Hour'
+            ],
+            datasets:[{
+                data:[s_temp,s_rain,e_temp,e_rain,hour]
+            }]
         }
     });
 }
